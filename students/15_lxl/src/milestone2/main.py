@@ -184,6 +184,16 @@ def good_cross_validation(X: np.ndarray, y: np.ndarray) -> dict:
 # ===== Task 5: 自动化制品管理 ================================================
 def save_report(bad_results: dict, good_results: dict, results_dir: Path):
     """将 Task 3 和 Task 4 的指标对比保存为中文 Markdown 报告。"""
+    # 计算各项差异
+    rmse_diff = good_results["rmse"] - bad_results["rmse"]
+    mae_diff = good_results["mae"] - bad_results["mae"]
+    mape_diff = good_results["mape"] - bad_results["mape"]
+
+    # 判断差异是否显著（阈值: 相对差异 > 1%）
+    avg_rmse = (good_results["rmse"] + bad_results["rmse"]) / 2
+    relative_diff = abs(rmse_diff) / avg_rmse if avg_rmse > 0 else 0
+    is_significant = relative_diff > 0.01
+
     report_lines = [
         "# 第十周 — 里程碑大作业：数据泄漏对比分析",
         "",
@@ -198,24 +208,45 @@ def save_report(bad_results: dict, good_results: dict, results_dir: Path):
         "",
         "| 指标 | Task 3 (有泄漏) | Task 4 (无泄漏) | 差异 |",
         "|---|---|---|---|",
-        f"| RMSE | {bad_results['rmse']:.4f} | {good_results['rmse']:.4f} | {good_results['rmse'] - bad_results['rmse']:+.4f} |",
-        f"| MAE  | {bad_results['mae']:.4f} | {good_results['mae']:.4f} | {good_results['mae'] - bad_results['mae']:+.4f} |",
-        f"| MAPE | {bad_results['mape']:.2f}% | {good_results['mape']:.2f}% | {good_results['mape'] - bad_results['mape']:+.2f}% |",
+        f"| RMSE | {bad_results['rmse']:.4f} | {good_results['rmse']:.4f} | {rmse_diff:+.4f} |",
+        f"| MAE  | {bad_results['mae']:.4f} | {good_results['mae']:.4f} | {mae_diff:+.4f} |",
+        f"| MAPE | {bad_results['mape']:.2f}% | {good_results['mape']:.2f}% | {mape_diff:+.2f}% |",
         "",
-        "## 3. 思考题: 为什么 Task 3 的'好成绩'是致命的？",
+        "## 3. 思考题: 数据泄漏的影响有多大？",
         "",
-        "Task 3 存在**数据泄漏 (Data Leakage)**，具体表现在两个方面:",
+    ]
+
+    if is_significant:
+        # 差异显著的情况
+        report_lines += [
+            "本次实验中，Task 3 与 Task 4 的指标差异**较为明显**。",
+            "这说明数据泄漏确实导致了交叉验证结果过于乐观。",
+            "",
+        ]
+    else:
+        # 差异不显著的情况（如实说明）
+        report_lines += [
+            "本次实验中，Task 3 与 Task 4 的指标差异**非常小**（RMSE 相对差异不足 1%）。",
+            "这是因为本数据集较为'干净'——仅有 50 个缺失值（占 5%），且特征间量纲差异不大，",
+            "全局均值与每折训练集均值非常接近，全局标准化参数与每折训练集参数也几乎相同。",
+            "因此泄漏带来的'虚假提升'极其微弱。",
+            "",
+        ]
+
+    report_lines += [
+        "但**数据泄漏的代码模式是危险的**，原因如下:",
         "",
         "1. **全局均值填充**: 用全量数据的均值填补缺失值，导致验证集的缺失值",
-        "   已经被全量数据（包含验证集本身）的统计信息所'污染'。验证集并非完全未见过的数据。",
+        "   已经被全量数据（包含验证集本身）的统计信息所'污染'。",
+        "   验证集并非完全未见过的数据。",
         "2. **全局标准化**: 在全量数据上 fit StandardScaler，意味着训练集的标准化",
         "   过程中用到了验证集的均值和标准差。模型在训练阶段就间接'看到'了验证集。",
         "",
-        "这会导致交叉验证的指标**过于乐观**——模型在离线评估中表现很好，",
-        "但上线后面对真正的未见过的数据时，性能会显著下降。",
+        "在更极端的场景下（如缺失比例更高、特征量纲差异更大、样本量更小），",
+        "这种泄漏会导致交叉验证的 RMSE 被显著低估，模型上线后性能大幅下降。",
         "",
-        "Task 4 虽然分数'更差'，但它才是模型真实泛化能力的体现。",
-        "给老板看 Task 4 的成绩，才能避免上线后出现'惊喜'。",
+        "因此，即使本次数据差距不大，也应该始终采用 Task 4 的无泄漏流程——",
+        "这是工业界的基本规范，不因数据集而改变。",
     ]
 
     report_path = results_dir / "evaluation_comparison.md"
