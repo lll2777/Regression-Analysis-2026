@@ -22,7 +22,7 @@ from sklearn.model_selection import KFold           # 仅用 KFold，模型用�
 # 将 src/ 加入搜索路径，以便导入自己维护的 utils/ 组件
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.models import GradientDescentOLS              # 自定义梯度下降 OLS
-from utils.metrics import calculate_rmse, calculate_mae, calculate_mape  # 自定义评估指标
+from utils.metrics import calculate_rmse, calculate_mae, calculate_mape, calculate_r2  # 自定义评估指标
 from utils.transformers import CustomStandardScaler, CustomSimpleImputer  # 自定义预处理
 from utils.diagnostics import calculate_vif              # 自定义共线性诊断
 
@@ -89,15 +89,12 @@ def leakage_free_cv(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> dict:
             gd_type="mini_batch", batch_fraction=0.2,  # 小批量梯度下降
         ).fit(X_train_i, y_train)
 
-        # ---- 第 6 步: 在验证集上预测并计算指标 ----
+        # ---- 第 6 步: 在验证集上预测并计算指标（复用 utils/metrics.py） ----
         preds = model.predict(X_val_i)
         fold_rmse = calculate_rmse(y_val, preds)
         fold_mae = calculate_mae(y_val, preds)
         fold_mape = calculate_mape(y_val, preds)
-        # 手动计算 R² = 1 - SSE/SST
-        ss_res = np.sum((y_val - preds) ** 2)      # 残差平方和
-        ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)  # 总平方和
-        fold_r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+        fold_r2 = calculate_r2(y_val, preds)
 
         # 收集各折指标
         rmse_list.append(fold_rmse)
@@ -157,9 +154,7 @@ def leakage_free_cv_sklearn(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> 
         rmse_list.append(calculate_rmse(y_val, preds))
         mae_list.append(calculate_mae(y_val, preds))
         mape_list.append(calculate_mape(y_val, preds))
-        ss_res = np.sum((y_val - preds) ** 2)
-        ss_tot = np.sum((y_val - np.mean(y_val)) ** 2)
-        r2_list.append(1 - ss_res / ss_tot if ss_tot > 0 else 0)
+        r2_list.append(calculate_r2(y_val, preds))
 
     return {
         "rmse": np.mean(rmse_list),
